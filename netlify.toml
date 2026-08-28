@@ -1,0 +1,17 @@
+[build]
+  # Nothing to build — the function IS the app. Netlify still needs a publish
+  # directory, so point it at a folder holding a single explanatory page.
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# The MCP endpoint is declared in the function itself (`export const config`),
+# which is where Netlify reads the path from. Repeated here only as a redirect
+# for the bare domain, so someone opening the URL in a browser gets the page
+# rather than a 404.
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200

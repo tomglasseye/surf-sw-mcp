@@ -1,0 +1,15 @@
+{
+  "name": "surf-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP connector for the surf forecast API — lets Claude answer \"where's the best spot near me\" and \"where's a good beach today\"",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  }
+}

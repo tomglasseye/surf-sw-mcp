@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Surf MCP connector</title>
+		<style>
+			:root { color-scheme: light dark; }
+			body {
+				margin: 0 auto; padding: 3rem 1.25rem; max-width: 34rem;
+				font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
+			}
+			code {
+				font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+				font-size: 0.9em; padding: 0.1em 0.35em;
+				background: color-mix(in srgb, currentColor 10%, transparent);
+				border-radius: 4px;
+			}
+			.endpoint { display: block; padding: 0.75em 1em; margin: 1.5rem 0; }
+			h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+			p.sub { margin-top: 0; opacity: 0.7; }
+		</style>
+	</head>
+	<body>
+		<h1>Surf MCP connector</h1>
+		<p class="sub">Not a website — an MCP server for Claude.</p>
+
+		<p>
+			This host answers the Model Context Protocol at:
+		</p>
+		<code class="endpoint">/mcp</code>
+
+		<p>
+			To use it, add that full URL as a custom connector in Claude under
+			<strong>Settings &rarr; Connectors &rarr; Add custom connector</strong>.
+			Claude can then answer questions like <em>“where’s the best surf near
+			Newquay tomorrow morning?”</em> or <em>“which beach is nicest to sit on
+			this afternoon?”</em>
+		</p>
+
+		<p>
+			Forecast data comes from the surf API this connector wraps, which is
+			built on Open-Meteo’s marine and weather models plus Stormglass tides.
+		</p>
+	</body>
+</html>
