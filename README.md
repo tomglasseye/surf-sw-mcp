@@ -29,7 +29,17 @@ with tests.
 | `list_spots` | what's in the dataset, by region |
 
 All of them take a location (`near` as a place name, or `latitude`/`longitude`)
-and a time (`date` plus `part_of_day`). Place names are geocoded through
+and a time (`date` plus `part_of_day`).
+
+Results are **ordered with travel taken into account**, and the score shown is
+still the conditions themselves. Ranking on score alone produced answers nobody
+would act on: asked for a beach near Falmouth, it returned Newquay Town Beach —
+93, and 29km away — above Gyllyngvase, which scores 79 and is 1km from the
+centre of town. Both numbers were right; the ordering had the distance and did
+not use it. The discount is gentler for surf than for beaches, because people
+drive an hour for a good wave and will not drive an hour to sit on slightly
+nicer sand. It is a tie-breaker, not a preference for whatever is closest — a
+distant spot that is genuinely far better still wins. Place names are geocoded through
 Open-Meteo, preferring UK matches — without that, "Perth" and "Boston" quietly
 resolve to the wrong continent.
 

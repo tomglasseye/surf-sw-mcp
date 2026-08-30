@@ -17,7 +17,13 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { buildServer } from "../src/server.js";
 import { clearCache } from "../src/upstream.js";
-import { payload, sameCellPayload, stubFetch, iso } from "./fixture.js";
+import {
+	payload,
+	sameCellPayload,
+	travelPayload,
+	stubFetch,
+	iso,
+} from "./fixture.js";
 
 const TODAY = iso(new Date());
 
@@ -338,4 +344,78 @@ test("cloud shows up once the API serves it", async () => {
 		part_of_day: "morning",
 	});
 	assert.match(text, /42%/);
+});
+
+// ── Travel ───────────────────────────────────────────────────────────────
+
+test("THE FALMOUTH CASE: a good beach nearby beats a better one 29km away", async () => {
+	// Ranking on score alone sent someone in Falmouth to Newquay. Both numbers
+	// were right; the ordering ignored the distance it already had.
+	const { client } = await connect(stubFetch(travelPayload()));
+	const { text, isError } = await call(client, "find_beach_spots", {
+		near: "Newquay", radius_km: 50,
+	});
+
+	assert.ok(!isError, text);
+	assert.ok(
+		text.indexOf("Near Cove") < text.indexOf("Far Beach"),
+		`the nearby beach should come first:\n${text}`,
+	);
+});
+
+test("the score shown is the conditions, not the conditions minus the drive", async () => {
+	// Nobody wants to be told a beach is "a 76 once you account for the
+	// journey". They want to know it is a 93 that happens to be too far.
+	const { client } = await connect(stubFetch(travelPayload()));
+	const { text } = await call(client, "find_beach_spots", {
+		near: "Newquay", radius_km: 50,
+	});
+
+	const score = (name) => {
+		const line = text.split("\n").find((l) => l.includes(name));
+		return Number(line.match(/\s(\d+)\s+\d+km/)[1]);
+	};
+	assert.ok(
+		score("Far Beach") > score("Near Cove"),
+		"the far beach must still display the higher score, despite ranking lower",
+	);
+	assert.match(text, /travel/i, "and the header must say why the order looks odd");
+});
+
+test("surfers travel further than families, and the ranking knows", async () => {
+	// The same two spots, the same distances. A 29km drive is most of the
+	// reason not to bother with a beach and barely a consideration for waves.
+	const { client } = await connect(stubFetch(travelPayload()));
+
+	const beach = await call(client, "find_beach_spots", { near: "Newquay", radius_km: 50 });
+	const surf = await call(client, "find_surf_spots", { near: "Newquay", radius_km: 50 });
+
+	assert.ok(
+		beach.text.indexOf("Near Cove") < beach.text.indexOf("Far Beach"),
+		"beach ranking should prefer near",
+	);
+	assert.ok(
+		surf.text.indexOf("Far Beach") < surf.text.indexOf("Near Cove"),
+		`surf ranking should still prefer the better waves:\n${surf.text}`,
+	);
+});
+
+test("distance is a tie-breaker, not a preference for whatever is closest", async () => {
+	// If a mild discount ever became a local-only bias, the tool would stop
+	// telling people the good waves are in Devon — which is sometimes the
+	// single most useful thing it can say.
+	const body = travelPayload();
+	const near = body.spots.find((s) => s.name === "Near Cove");
+	for (const day of near.forecast.next_5_days) {
+		for (const h of day.hourly) {
+			h.weather.temperature = 11;   // cold
+			h.weather.windSpeed = 30;     // and blowing
+		}
+	}
+	const { client } = await connect(stubFetch(body));
+	const { text } = await call(client, "find_beach_spots", { near: "Newquay", radius_km: 50 });
+	assert.ok(
+		text.indexOf("Far Beach") < text.indexOf("Near Cove"),
+		`a far beach that is genuinely far better must still win:\n${text}`,
+	);
 });

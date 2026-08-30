@@ -192,3 +192,33 @@ export function sameCellPayload({ today = iso(new Date()), wave = 2.5 } = {}) {
 		],
 	};
 }
+
+/**
+ * The Falmouth case, reproduced: a good spot on the doorstep and a better one
+ * a long drive away.
+ *
+ * Measured from the real thing — asked for a beach near Falmouth, the
+ * connector returned Newquay Town Beach (93, 29km) above Gyllyngvase (79,
+ * 1km). Both scores were right and the ordering was useless.
+ *
+ * Distances are from Newquay (50.415,-5.078), which is what stubFetch
+ * geocodes to.
+ */
+export function travelPayload({ today = iso(new Date()) } = {}) {
+	return {
+		success: true,
+		count: 2,
+		generated_at: `${today}T06:00:00.000Z`,
+		status: "ok",
+		spots: [
+			// ~1km away, good.
+			spot("Near Cove", 50.424, -5.078, "North Cornwall",
+				[day(today, { wave: 0.5, wind: 14, temp: 20, rain: 0, surf: 60 })],
+				{ exposure: 1 }),
+			// ~29km away, better on both counts.
+			spot("Far Beach", 50.676, -5.078, "North Cornwall",
+				[day(today, { wave: 0.3, wind: 5, temp: 24, rain: 0, surf: 85 })],
+				{ exposure: 1 }),
+		],
+	};
+}

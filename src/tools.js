@@ -27,6 +27,37 @@ import {
 const DEFAULT_RADIUS_KM = 40;
 const DEFAULT_LIMIT = 6;
 
+/**
+ * How much a spot's score is discounted for being far away.
+ *
+ * Ranking on score alone produced answers nobody would act on. Asked for a
+ * beach near Falmouth, the connector returned Newquay Town Beach — 93, and
+ * 29km away — above Gyllyngvase, which scores 79 and is 1km from the centre of
+ * town. Both scores are right. The ordering is useless, because it had the
+ * distance and did not use it.
+ *
+ * Two curves, because the two questions have genuinely different travel
+ * tolerance. People drive an hour for a good wave and will not drive an hour
+ * to sit on slightly nicer sand, particularly with children in the car.
+ *
+ * Deliberately gentle. This is a tie-breaker among comparable options, not a
+ * preference for whatever is closest: a distant spot that is far better still
+ * wins, which is correct — sometimes the good waves really are in Devon.
+ */
+const TRAVEL_BEACH = [[0, 1], [5, 1], [15, 0.92], [30, 0.82], [60, 0.7], [120, 0.55]];
+const TRAVEL_SURF = [[0, 1], [15, 1], [40, 0.93], [80, 0.85], [150, 0.75]];
+
+/** Piecewise-linear interpolation over [input, output] points. */
+function interpolate(points, x) {
+	if (x <= points[0][0]) return points[0][1];
+	for (let i = 1; i < points.length; i++) {
+		const [x0, y0] = points[i - 1];
+		const [x1, y1] = points[i];
+		if (x <= x1) return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+	}
+	return points[points.length - 1][1];
+}
+
 /** Shared shape for anything that takes a place and a time. */
 const locationShape = {
 	near: z
@@ -109,6 +140,7 @@ async function rankSpots({
 	scoreHour,
 	scoreDay,
 	describe,
+	travel,
 }) {
 	const rows = [];
 
@@ -167,7 +199,12 @@ async function rankSpots({
 		});
 	}
 
-	rows.sort((a, b) => b.score - a.score);
+	// Rank on the discounted value, report the real one. Showing a distance-
+	// adjusted number would be worse than useless — nobody wants to know a
+	// beach is "a 76 once you account for the drive", they want to know it is
+	// a 93 that happens to be too far.
+	for (const r of rows) r.rank = r.score * interpolate(travel, r.km);
+	rows.sort((a, b) => b.rank - a.rank || a.km - b.km);
 	return rows;
 }
 
@@ -248,6 +285,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					location,
 					window,
 					radiusKm,
+					travel: TRAVEL_SURF,
 					scoreHour: (h) => pickScore(h.surf_score),
 					scoreDay: (d) => pickScore(d.surf_score),
 					describe: (hour, day) => {
@@ -285,7 +323,10 @@ export function registerTools(server, { fetchImpl } = {}) {
 					`(${window.date}, ${String(window.fromHour).padStart(2, "0")}:00-` +
 					`${String(window.toHour).padStart(2, "0")}:00)\n` +
 					`Surf score 0-100 for a ${skill} surfer. ` +
-					`${rows.length} spot(s) within ${radiusKm}km; best hour shown.\n`;
+					`${rows.length} spot(s) within ${radiusKm}km; best hour shown.\n` +
+					"Ordered with travel taken into account, so a nearer spot can " +
+					"outrank a slightly better far one. Scores are the conditions " +
+					"themselves.\n";
 
 				const footer = coarse
 					? "\n\nSome rows are day-level averages — the hourly forecast for " +
@@ -351,6 +392,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					location,
 					window,
 					radiusKm,
+					travel: TRAVEL_BEACH,
 					scoreHour: (h, spot) => scoreBeachHour(h, spot, audience)?.score ?? null,
 					scoreDay: (d, spot) => scoreBeachDay(d, spot, audience)?.score ?? null,
 					describe: (hour, day, spot) => {
@@ -376,7 +418,8 @@ export function registerTools(server, { fetchImpl } = {}) {
 					`(${window.date})\n` +
 					`Beach-day score 0-100, ${AUDIENCE_NOTE[audience]}.\n` +
 					"Wave heights are what reaches each beach after shelter, not " +
-					"the open-sea forecast.\n";
+					"the open-sea forecast. Ordered with travel taken into account, " +
+					"so a nearer beach can outrank a slightly better far one.\n";
 
 				return text(`${header}\n${renderTable(rows, limit)}`);
 			} catch (err) {
