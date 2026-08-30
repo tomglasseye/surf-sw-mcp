@@ -172,11 +172,12 @@ matters, put a shared secret in front of it.
 
 ## Limits worth knowing
 
-- **No cloud cover.** The surf API requests temperature, humidity,
-  precipitation, pressure and wind from Open-Meteo, but not `cloud_cover`, so
-  the beach score cannot tell bright from overcast. Adding `cloud_cover` to
-  `HOURLY_PARAMS` in `src/services/integrations/meto-forecast.js` (and to
-  `toDomain`, which maps exactly those fields) would fix it.
+- **Cloud cover arrives with the data.** The beach score reads
+  `weather.cloudCover` when the API serves it and is a strict no-op when it
+  does not — sun's weight is taken off the other three proportionally, so an
+  older payload scores identically rather than approximately. Sun is weighted,
+  never gated: a warm, calm, overcast afternoon is still a good beach day.
+  It counts most for `sitting` and least for `kids`.
 - **Future days can be coarser.** `/surf/summary` only carries hourly records
   for today. The connector retries against `/surf` for later days and falls
   back to day-level averages if that fails — answers built that way say

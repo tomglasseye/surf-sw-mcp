@@ -8,6 +8,7 @@ import {
 	exposureAt,
 	effectiveWaveHeight,
 	windShelter,
+	explainBeach,
 } from "../src/beach-day.js";
 
 const hour = ({ wave = 0.5, wind = 8, temp = 22, rain = 0 }) => ({
@@ -294,4 +295,100 @@ test("an unknown audience falls back to sitting rather than throwing", () => {
 	);
 	assert.ok(r);
 	assert.equal(r.audience, "sitting");
+});
+
+// ── Sun ──────────────────────────────────────────────────────────────────
+
+const sunHour = (cloud) => ({
+	marine: { waveHeight: 0.5, swellDirection: 285 },
+	weather: {
+		windSpeed: 8, windDirection: 135, temperature: 22, precipitation: 0,
+		...(cloud === null ? {} : { cloudCover: cloud }),
+	},
+});
+const openSpot = { swellWindow: Array(36).fill(1), faces: "W" };
+
+test("SAFE WIRING: no cloudCover scores exactly as before, not approximately", () => {
+	// The API did not serve this field when the term was added. A connector
+	// that quietly re-scored all 125 spots the day it shipped would be
+	// indistinguishable from a bug, so sun is blended in by taking its weight
+	// off the other three proportionally — absent, the arithmetic is
+	// identical, not merely close.
+	//
+	// These are the values from before the sun term existed.
+	assert.equal(scoreBeachHour(sunHour(null), openSpot, "sitting").score, 100);
+	assert.equal(scoreBeachHour(sunHour(null), openSpot, "swimming").score, 100);
+	assert.equal(scoreBeachHour(sunHour(null), openSpot, "kids").score, 91);
+	assert.equal(scoreBeachHour(sunHour(null), openSpot).components.sun, null);
+});
+
+test("a clear sky beats an overcast one", () => {
+	const clear = scoreBeachHour(sunHour(0), openSpot, "sitting").score;
+	const grey = scoreBeachHour(sunHour(100), openSpot, "sitting").score;
+	assert.ok(clear > grey, `clear ${clear} should beat overcast ${grey}`);
+	assert.ok(clear - grey >= 8, "and by enough to change a ranking");
+});
+
+test("grey is weighted, never gated", () => {
+	// Cold, rain and a gale each end a beach day on their own. Grey does not:
+	// a warm, calm, overcast afternoon on the sand is still a good one, and a
+	// score that called it "poor" would be wrong in a way people would notice
+	// immediately.
+	const overcast = scoreBeachHour(sunHour(100), openSpot, "sitting");
+	assert.ok(overcast.score > 75, `still a good day, got ${overcast.score}`);
+	assert.equal(overcast.rating, "great");
+});
+
+test("a few clouds cost nothing", () => {
+	assert.equal(
+		scoreBeachHour(sunHour(0), openSpot, "sitting").score,
+		scoreBeachHour(sunHour(20), openSpot, "sitting").score,
+	);
+});
+
+test("sun matters most to sitting and least to kids in the water", () => {
+	// You notice the sun on a towel. You notice it less while chasing a
+	// five-year-old through the shorebreak.
+	const drop = (audience) =>
+		scoreBeachHour(sunHour(0), openSpot, audience).score -
+		scoreBeachHour(sunHour(100), openSpot, audience).score;
+	assert.ok(drop("sitting") > drop("swimming"), "sitting should care most");
+	assert.ok(drop("swimming") > drop("kids"), "kids should care least");
+});
+
+test("sun cannot rescue a day that is cold, wet or blowing", () => {
+	// The gates multiply, so a brilliant clear sky still cannot make 9°C a
+	// beach day. Otherwise the cheapest possible input would override the
+	// three that actually decide it.
+	const brightAndFreezing = scoreBeachHour(
+		{
+			marine: { waveHeight: 0.4, swellDirection: 285 },
+			weather: { windSpeed: 5, windDirection: 135, temperature: 9, precipitation: 0, cloudCover: 0 },
+		},
+		openSpot,
+		"sitting",
+	);
+	assert.ok(brightAndFreezing.score < 35, `got ${brightAndFreezing.score}`);
+});
+
+test("the day-level path reads cloudCoverMean", () => {
+	// Days beyond today carry only aggregates, and a field missing there would
+	// silently fall back to the no-sun score for six of the seven days.
+	const day = (mean) => ({
+		summary: { windSpeed: { avg: 8 }, temperature: { max: 22 }, waveHeight: { avg: 0.5 } },
+		daily: {
+			marine: { waveDirectionDominant: 285 },
+			weather: { precipitationSum: 0, windDirectionDominant: 135, cloudCoverMean: mean },
+		},
+	});
+	const clear = scoreBeachDay(day(0), openSpot, "sitting");
+	const grey = scoreBeachDay(day(100), openSpot, "sitting");
+	assert.ok(clear.score > grey.score);
+	assert.equal(clear.components.sun, 100);
+	assert.equal(grey.components.sun, 35);
+});
+
+test("an overcast day says so in its explanation", () => {
+	const grey = scoreBeachHour(sunHour(90), openSpot, "sitting");
+	assert.match(explainBeach(grey), /grey \(90% cloud\)/);
 });

@@ -74,6 +74,20 @@ const COLD_GATE = [[8, 0.2], [12, 0.5], [15, 0.85], [17, 1]];
 const GALE_GATE = [[0, 1], [25, 1], [32, 0.7], [40, 0.4], [55, 0.2]];
 
 /**
+ * Cloud cover, percent. 0 is a clear sky, 100 is overcast.
+ *
+ * Deliberately NOT a gate. Cold, rain and a gale each end a beach day on their
+ * own; grey does not — a warm, calm, overcast afternoon on the sand is still a
+ * perfectly good one, just not as good. So this is weighted, and gently.
+ *
+ * The curve is flat to 20% because a few clouds are nobody's problem, and
+ * floors at 35 rather than 0 because even under full overcast the difference
+ * between a warm sheltered beach and a cold windy one is what the rest of the
+ * score is for.
+ */
+const SUN = [[0, 100], [20, 100], [50, 80], [80, 50], [100, 35]];
+
+/**
  * Who the beach day is for.
  *
  * "A nice beach" is not one question. Sitting on the sand with a book barely
@@ -95,18 +109,30 @@ const GALE_GATE = [[0, 1], [25, 1], [32, 0.7], [40, 0.4], [55, 0.2]];
  */
 const PROFILES = {
 	sitting: {
+		// How much of the score sun is worth, taken off the other three
+		// proportionally. Highest for sitting — that is most of why anyone sits
+		// on a beach — and lower once you are in the water and moving.
+		sun: 0.18,
 		label: "sitting on the beach",
 		weights: { wind: 0.4, temperature: 0.4, waves: 0.2 },
 		waves: [[0, 100], [0.5, 100], [1.2, 80], [2, 55], [3, 30], [4.5, 20]],
 		waveGate: null,
 	},
 	swimming: {
+		// How much of the score sun is worth, taken off the other three
+		// proportionally. Highest for sitting — that is most of why anyone sits
+		// on a beach — and lower once you are in the water and moving.
+		sun: 0.12,
 		label: "swimming",
 		weights: { wind: 0.3, temperature: 0.35, waves: 0.35 },
 		waves: [[0, 100], [0.7, 100], [1.2, 80], [1.8, 45], [2.4, 15], [3.5, 0]],
 		waveGate: [[0, 1], [1.5, 1], [2.2, 0.6], [3, 0.3], [4, 0.15]],
 	},
 	kids: {
+		// How much of the score sun is worth, taken off the other three
+		// proportionally. Highest for sitting — that is most of why anyone sits
+		// on a beach — and lower once you are in the water and moving.
+		sun: 0.1,
 		label: "small children in the water",
 		weights: { wind: 0.25, temperature: 0.3, waves: 0.45 },
 		waves: [[0, 100], [0.3, 100], [0.6, 70], [1, 25], [1.4, 5], [2, 0]],
@@ -187,7 +213,8 @@ export function windShelter(windDirection, faces) {
 // ── Scoring ───────────────────────────────────────────────────────────────
 
 function score({
-	windSpeed, temperature, waveHeight, precipitation, shelter, exposure, audience,
+	windSpeed, temperature, waveHeight, precipitation, cloudCover,
+	shelter, exposure, audience,
 }) {
 	const profile = PROFILES[audience] ?? PROFILES.sitting;
 
@@ -205,7 +232,20 @@ function score({
 
 	const w = profile.weights;
 	const base = wind * w.wind + temp * w.temperature + waves * w.waves;
-	const total = clamp(base * coldGate * rainGate * galeGate * waveGate);
+
+	// Sun is blended in by taking its weight off the other three
+	// proportionally, so a payload without cloudCover scores EXACTLY as it did
+	// before rather than approximately. That matters: the API does not serve
+	// the field yet, and a connector that quietly re-scored all 125 spots the
+	// day it shipped would be indistinguishable from a bug.
+	//
+	// Same safe-wiring rule as exposureAt returning 1 for a spot with no swell
+	// window — absent data must cost nothing.
+	const sun = curve(SUN, cloudCover);
+	const withSun =
+		sun == null ? base : base * (1 - profile.sun) + sun * profile.sun;
+
+	const total = clamp(withSun * coldGate * rainGate * galeGate * waveGate);
 
 	return {
 		score: total,
@@ -215,6 +255,7 @@ function score({
 			wind: Math.round(wind),
 			temperature: Math.round(temp),
 			waves: Math.round(waves),
+			sun: sun == null ? null : Math.round(sun),
 			cold_gate: Number(coldGate.toFixed(2)),
 			rain_gate: Number(rainGate.toFixed(2)),
 			gale_gate: Number(galeGate.toFixed(2)),
@@ -251,6 +292,7 @@ export function scoreBeachHour(hour, spot, audience = "sitting") {
 		temperature,
 		waveHeight: effectiveWaveHeight(hour?.marine?.waveHeight, exposure),
 		precipitation,
+		cloudCover: hour?.weather?.cloudCover,
 		shelter,
 		exposure,
 		audience,
@@ -264,6 +306,7 @@ export function scoreBeachHour(hour, spot, audience = "sitting") {
 		wave_height_m: hour?.marine?.waveHeight,
 		effective_wave_height_m: effectiveWaveHeight(hour?.marine?.waveHeight, exposure),
 		precipitation_mm: precipitation,
+		cloud_cover_pct: hour?.weather?.cloudCover ?? null,
 	};
 	return result;
 }
@@ -302,6 +345,7 @@ export function scoreBeachDay(day, spot, audience = "sitting") {
 		temperature: tempMax,
 		waveHeight: effectiveWaveHeight(waveAvg, exposure),
 		precipitation: precipPerHour,
+		cloudCover: day?.daily?.weather?.cloudCoverMean,
 		shelter,
 		exposure,
 		audience,
@@ -315,6 +359,7 @@ export function scoreBeachDay(day, spot, audience = "sitting") {
 		wave_height_m: waveAvg,
 		effective_wave_height_m: effectiveWaveHeight(waveAvg, exposure),
 		precipitation_mm: precipPerHour,
+		cloud_cover_pct: day?.daily?.weather?.cloudCoverMean ?? null,
 	};
 	return result;
 }
@@ -344,6 +389,7 @@ export function explainBeach(result) {
 	if (c.cold_gate >= 0.85 && c.temperature < 50) {
 		bits.push(`cool (${Math.round(i.temperature_c)}°C)`);
 	}
+	if (c.sun != null && c.sun < 65) bits.push(`grey (${Math.round(i.cloud_cover_pct)}% cloud)`);
 	if (c.wave_gate < 1) {
 		bits.push(`too big (${Number(i.effective_wave_height_m).toFixed(1)}m)`);
 	} else if (c.waves < 50) {
@@ -362,7 +408,12 @@ export function explainBeach(result) {
 	if (c.wind_shelter < 0.8) shelters.push("wind blowing off the land");
 
 	if (!bits.length && !shelters.length) {
-		return `${Math.round(i.temperature_c)}°C, wind ${Math.round(i.felt_wind_kph)}km/h`;
+		const sunny =
+			c.sun != null && c.sun >= 95 ? ", clear" : c.sun != null ? "" : "";
+		return (
+			`${Math.round(i.temperature_c)}°C, wind ` +
+			`${Math.round(i.felt_wind_kph)}km/h${sunny}`
+		);
 	}
 	return [
 		bits.length ? `held back by ${bits.join(", ")}` : null,

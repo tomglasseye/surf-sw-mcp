@@ -308,3 +308,34 @@ test("the beach tool advertises the audience choice to Claude", async () => {
 	]);
 	assert.match(beach.description, /kids|children/i);
 });
+
+test("get_spot_forecast shows a sky column, and absent is not a clear sky", async () => {
+	// The fixture carries no cloudCover, matching the API before its deploy.
+	// A missing field rendered as 0% would read as brilliant sunshine — the
+	// most misleading possible default for this particular number.
+	const { client } = await connect(stubFetch());
+	const { text } = await call(client, "get_spot_forecast", {
+		spot: "Warm Cove",
+		part_of_day: "morning",
+	});
+	assert.match(text, /sky/, "the column should be there");
+	assert.ok(!/\s0%/.test(text), "absent cloud must not render as 0%");
+	assert.match(text, /-\s*$/m, "it should render as a dash");
+});
+
+test("cloud shows up once the API serves it", async () => {
+	// Proves the column is wired to the field rather than always printing a
+	// dash — which would look identical today and stay broken after deploy.
+	const body = payload();
+	for (const spot of body.spots) {
+		for (const day of spot.forecast.next_5_days) {
+			for (const h of day.hourly) h.weather.cloudCover = 42;
+		}
+	}
+	const { client } = await connect(stubFetch(body));
+	const { text } = await call(client, "get_spot_forecast", {
+		spot: "Warm Cove",
+		part_of_day: "morning",
+	});
+	assert.match(text, /42%/);
+});

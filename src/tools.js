@@ -451,7 +451,9 @@ export function registerTools(server, { fetchImpl } = {}) {
 
 				if (hasHourly(day)) {
 					const hours = day.hourly.filter((h) => inWindow(h, window));
-					lines.push("time   surf  beach  waves          wind           air   rain");
+					lines.push(
+						"time   surf  beach  waves          wind           air   rain    sky",
+					);
 					for (const h of hours) {
 						const m = h.marine ?? {};
 						const w = h.weather ?? {};
@@ -465,6 +467,13 @@ export function registerTools(server, { fetchImpl } = {}) {
 								`${Math.round(w.windSpeed ?? 0)}km/h ${compassOf(w.windDirection)}`.padEnd(14),
 								`${Math.round(w.temperature ?? 0)}°C`.padStart(5),
 								`${(w.precipitation ?? 0).toFixed(1)}mm`.padStart(7),
+								// Absent until the API serves cloud_cover; shown as
+								// "-" rather than 0 so a missing field never reads
+								// as a clear sky.
+								(w.cloudCover == null
+									? "  -"
+									: `${Math.round(w.cloudCover)}%`
+								).padStart(7),
 							].join(""),
 						);
 					}
@@ -478,6 +487,11 @@ export function registerTools(server, { fetchImpl } = {}) {
 						`  waves            ${s.waveHeight?.min ?? "-"}-${s.waveHeight?.max ?? "-"}m`,
 						`  wind             ${Math.round(s.windSpeed?.avg ?? 0)}km/h avg`,
 						`  air              ${s.temperature?.min ?? "-"}-${s.temperature?.max ?? "-"}°C`,
+						`  cloud            ${
+							day.daily?.weather?.cloudCoverMean == null
+								? "not reported"
+								: `${Math.round(day.daily.weather.cloudCoverMean)}%`
+						}`,
 					);
 				}
 
