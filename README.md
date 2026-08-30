@@ -44,7 +44,7 @@ So `src/beach-day.js` adds one. It is not an average:
 
 ```
 score = base(wind, temperature, waves)
-        × coldGate(temp) × rainGate(rain) × galeGate(wind)
+        × coldGate(temp) × rainGate(rain) × galeGate(wind) × waveGate(waves)
 ```
 
 Cold, rain and a gale each end a beach day on their own, whatever the other two
@@ -52,10 +52,58 @@ are doing, so each multiplies rather than contributing a share. Both ends of
 that were found by testing rather than assumed: weighted, a 9°C dead-calm flat
 day scored 63/100, and a 24°C day in a 35km/h gale scored 64.
 
-This lives in the connector, not the API, because the app has no beach-day
-feature — so there is no second engine to drift away from the first, which is
-what went wrong with `calculateComprehensiveSurfScore`. **If the app ever grows
-one, move this module into the API and have the connector read the result.**
+### It is spot-specific, which `good-for.js` is not
+
+This is the part that matters most, and it is a real gap in the app as well.
+
+`good-for.js` reads `hour.marine.waveHeight` straight from the payload, and
+that number is the marine model's **grid cell** — which 21 Newquay breaks share
+byte for byte. Measured on live data, six Newquay spots on the same afternoon:
+
+| spot | waveHeight | exposure | swim | splash |
+|---|---|---|---|---|
+| Towan | 0.56 | 0.08 | 79 | 57 |
+| Watergate Bay | 0.56 | 1.00 | 77 | 56 |
+| Crantock | 0.56 | 0.42 | 79 | 58 |
+| The Cribber | 0.56 | 1.00 | 79 | 57 |
+
+Identical swim and splash scores across a twelvefold difference in exposure.
+Only `surf` varies, because it reads `surf_score`, which already applies the
+swell window. On a flat day that hardly matters; on a 2.5m day Towan stays
+knee-high while Watergate is well overhead.
+
+So this score works from an **effective wave height** — the grid-cell height
+scaled by `sqrt(exposure)`, because height goes as the root of energy — and an
+**effective wind**, reduced when the wind is blowing off the land behind the
+beach rather than in off the sea.
+
+### Who it is for changes the answer
+
+"A nice beach" is not one question, and one weighting collapses it. A warm,
+light-wind, 2.5m day at an exposed beach scored 79/100 — correct for a
+deckchair, dangerous advice for a family. So `audience` picks the wave curve
+and, for the water audiences, adds a gate:
+
+| | Towan-like (exposure 0.08) | Watergate-like (exposure 1.0) |
+|---|---|---|
+| `sitting` | 98 great | 87 great |
+| `swimming` | 99 great | 34 poor |
+| `kids` | 80 great | 5 no |
+
+The wave curves follow the ones already in `good-for.js`, so "too big for kids"
+means the same thing in the app and here.
+
+### Where it lives
+
+In the connector, not the API, because the app has no beach-day feature — so
+there is no second engine to drift away from the first, which is what went
+wrong with `calculateComprehensiveSurfScore`. **If the app ever grows one, move
+this module into the API and have the connector read the result.**
+
+Worth noting separately: the shelter gap above is a defect in the app's own
+`good-for.js`, independent of this connector. Applying `swellWindow` to the
+wave height inside `scoreHour()` there would fix swim, paddle and splash for
+every client at once.
 
 ## Running it locally
 

@@ -17,7 +17,12 @@ import {
 	hasHourly,
 	baseUrl,
 } from "./upstream.js";
-import { scoreBeachHour, scoreBeachDay, explainBeach, ratingFor } from "./beach-day.js";
+import {
+	scoreBeachHour,
+	scoreBeachDay,
+	explainBeach,
+	ratingFor,
+} from "./beach-day.js";
 
 const DEFAULT_RADIUS_KM = 40;
 const DEFAULT_LIMIT = 6;
@@ -129,7 +134,7 @@ async function rankSpots({
 		if (hasHourly(day)) {
 			const hours = day.hourly.filter((h) => inWindow(h, window));
 			for (const h of hours) {
-				const s = scoreHour(h);
+				const s = scoreHour(h, spot);
 				if (s == null) continue;
 				if (score == null || s > score) {
 					score = s;
@@ -137,10 +142,10 @@ async function rankSpots({
 				}
 			}
 			resolution = "hour";
-			if (bestHour) detail = describe(bestHour);
+			if (bestHour) detail = describe(bestHour, null, spot);
 		} else {
-			score = scoreDay(day);
-			detail = describe(null, day);
+			score = scoreDay(day, spot);
+			detail = describe(null, day, spot);
 		}
 
 		if (score == null) continue;
@@ -301,17 +306,29 @@ export function registerTools(server, { fetchImpl } = {}) {
 		{
 			title: "Find a good beach to spend time on",
 			description:
-				"Rank beaches near a place by how pleasant they will be to " +
-				"actually spend time on — sitting, swimming, taking kids — " +
-				"rather than to surf. Use this for \"where's a good beach " +
-				"today\", \"nicest beach this afternoon\", \"somewhere to take " +
-				"the family\". This is NOT the surf score and often disagrees " +
-				"with it: a big clean swell is great surf and a poor beach day. " +
-				"Weighs wind and air temperature most heavily, then wave size, " +
-				"and rain drags the score down hard.",
+				"Rank beaches near a place by how good they will actually be to " +
+				"spend time on, rather than to surf. Use this for \"where's a " +
+				"good beach today\", \"nicest beach this afternoon\", " +
+				"\"somewhere to take the kids\", \"somewhere out of the wind\". " +
+				"This is NOT the surf score and often disagrees with it: a big " +
+				"clean swell is great surf and a poor family beach. Accounts for " +
+				"wind, air temperature, rain, and how sheltered each beach is " +
+				"from the swell — so it can tell two beaches apart even when the " +
+				"forecast gives them the same wave height. Set `audience` when " +
+				"the person says who is going.",
 			inputSchema: {
 				...locationShape,
 				...whenShape,
+				audience: z
+					.enum(["sitting", "swimming", "kids"])
+					.optional()
+					.describe(
+						"Who it is for, which changes how much wave size matters. " +
+							"sitting (default) — on the sand, big surf is just " +
+							"scenery. swimming — going in the water. kids — small " +
+							"children in the water, where anything over about a " +
+							"metre rules a beach out however nice the weather.",
+					),
 				limit: z
 					.number()
 					.optional()
@@ -327,15 +344,19 @@ export function registerTools(server, { fetchImpl } = {}) {
 
 				const { payload } = await payloadFor(window, fetchImpl);
 
+				const audience = args.audience ?? "sitting";
+
 				const rows = await rankSpots({
 					payload,
 					location,
 					window,
 					radiusKm,
-					scoreHour: (h) => scoreBeachHour(h)?.score ?? null,
-					scoreDay: (d) => scoreBeachDay(d)?.score ?? null,
-					describe: (hour, day) => {
-						const r = hour ? scoreBeachHour(hour) : scoreBeachDay(day);
+					scoreHour: (h, spot) => scoreBeachHour(h, spot, audience)?.score ?? null,
+					scoreDay: (d, spot) => scoreBeachDay(d, spot, audience)?.score ?? null,
+					describe: (hour, day, spot) => {
+						const r = hour
+							? scoreBeachHour(hour, spot, audience)
+							: scoreBeachDay(day, spot, audience);
 						if (!r) return "no weather data";
 						return `${ratingFor(r.score)} · ${explainBeach(r)}` +
 							(hour ? "" : " (day-level)");
@@ -344,11 +365,18 @@ export function registerTools(server, { fetchImpl } = {}) {
 
 				if (!rows.length) return text(noResults(location, window, radiusKm));
 
+				const AUDIENCE_NOTE = {
+					sitting: "for sitting on the beach — big surf is scenery, not a problem",
+					swimming: "for swimming — wave size matters much more",
+					kids: "for small children in the water — anything over about a metre rules a beach out",
+				};
+
 				const header =
 					`Best beaches near ${location.name} — ${window.label} ` +
 					`(${window.date})\n` +
-					"Beach-day score 0-100: wind and air temperature weigh most, " +
-					"then wave size; rain gates it down.\n";
+					`Beach-day score 0-100, ${AUDIENCE_NOTE[audience]}.\n` +
+					"Wave heights are what reaches each beach after shelter, not " +
+					"the open-sea forecast.\n";
 
 				return text(`${header}\n${renderTable(rows, limit)}`);
 			} catch (err) {
@@ -427,7 +455,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					for (const h of hours) {
 						const m = h.marine ?? {};
 						const w = h.weather ?? {};
-						const beach = scoreBeachHour(h);
+						const beach = scoreBeachHour(h, match);
 						lines.push(
 							[
 								h.time.slice(11, 16).padEnd(6),
@@ -442,7 +470,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					}
 				} else {
 					const s = day.summary ?? {};
-					const beach = scoreBeachDay(day);
+					const beach = scoreBeachDay(day, match);
 					lines.push(
 						"Day-level only (hourly detail was not available for this day):",
 						`  surf score       ${day.surf_score?.totalScore ?? "-"}/100`,

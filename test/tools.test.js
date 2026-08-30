@@ -17,7 +17,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import { buildServer } from "../src/server.js";
 import { clearCache } from "../src/upstream.js";
-import { payload, stubFetch, iso } from "./fixture.js";
+import { payload, sameCellPayload, stubFetch, iso } from "./fixture.js";
 
 const TODAY = iso(new Date());
 
@@ -242,4 +242,69 @@ test("today's data is used when the date is today", async () => {
 	const { client } = await connect(stubFetch());
 	const { text } = await call(client, "find_surf_spots", { near: "Newquay", date: TODAY });
 	assert.match(text, new RegExp(TODAY));
+});
+
+test("beach ranking separates two beaches sharing one marine grid cell", async () => {
+	// End to end, through the protocol. Both spots report an identical 2.5m
+	// because the marine model has one cell for both; only their swell windows
+	// differ. This is the Newquay case, and it is the whole reason a family can
+	// use this tool to pick a beach rather than just a region.
+	const { client } = await connect(stubFetch(sameCellPayload()));
+	const { text, isError } = await call(client, "find_beach_spots", {
+		near: "Newquay",
+		radius_km: 30,
+	});
+
+	assert.ok(!isError, text);
+	assert.ok(
+		text.indexOf("Sheltered Cove") < text.indexOf("Exposed Beach"),
+		`the sheltered beach must win on a 2.5m day:\n${text}`,
+	);
+	// And it should say why, or the answer is unarguable rather than useful.
+	assert.match(text, /sheltered from the swell/);
+	assert.match(text, /2\.5m out/);
+});
+
+test("surf ranking is unaffected by the beach shelter maths", async () => {
+	// The surf side reads surf_score, which already accounts for exposure
+	// upstream. If a change to the beach score ever moves the surf ranking,
+	// something has leaked between them.
+	const { client } = await connect(stubFetch(sameCellPayload()));
+	const { text } = await call(client, "find_surf_spots", {
+		near: "Newquay",
+		radius_km: 30,
+	});
+	assert.match(text, /Sheltered Cove/);
+	assert.match(text, /Exposed Beach/);
+});
+
+test("audience changes the beach ranking through the tool", async () => {
+	// The exposed beach is the pleasanter place to sit (no shelter, so more
+	// open) but the wrong place to take a child on a 2.5m day.
+	const { client } = await connect(stubFetch(sameCellPayload({ wave: 2.5 })));
+
+	const kids = await call(client, "find_beach_spots", {
+		near: "Newquay", radius_km: 30, audience: "kids",
+	});
+	assert.ok(!kids.isError, kids.text);
+	assert.ok(
+		kids.text.indexOf("Sheltered Cove") < kids.text.indexOf("Exposed Beach"),
+		`kids ranking should strongly prefer the sheltered beach:\n${kids.text}`,
+	);
+	assert.match(kids.text, /small children/, "header should say who it scored for");
+	assert.match(kids.text, /too big/, "and why the exposed one lost");
+});
+
+test("the beach tool advertises the audience choice to Claude", async () => {
+	// If this is not in the schema, Claude cannot use it, and "somewhere to
+	// take the kids" silently gets the sitting score.
+	const { client } = await connect(stubFetch());
+	const { tools } = await client.listTools();
+	const beach = tools.find((t) => t.name === "find_beach_spots");
+	assert.deepEqual(beach.inputSchema.properties.audience.enum, [
+		"sitting",
+		"swimming",
+		"kids",
+	]);
+	assert.match(beach.description, /kids|children/i);
 });

@@ -54,11 +54,16 @@ export function day(date, opts = {}, { withHourly = true } = {}) {
 			temperature: { min: (opts.temp ?? 18) - 3, max: opts.temp ?? 18 },
 		},
 		daily: {
-			marine: { waveHeightMax: opts.wave ?? 1 },
+			// The dominant directions are what the day-level path uses to apply
+			// swell and wind shelter, so a fixture without them silently tests
+			// the unsheltered fallback instead.
+			marine: { waveHeightMax: opts.wave ?? 1, waveDirectionDominant: 285 },
 			weather: {
 				temperatureMax: opts.temp ?? 18,
 				temperatureMin: (opts.temp ?? 18) - 3,
 				precipitationSum: (opts.rain ?? 0) * 8,
+				windSpeedMax: opts.wind ?? 12,
+				windDirectionDominant: 135,
 			},
 		},
 		surf_score: {
@@ -81,19 +86,19 @@ export function day(date, opts = {}, { withHourly = true } = {}) {
 	};
 }
 
-export function spot(name, latitude, longitude, region, days) {
+export function spot(name, latitude, longitude, region, days, opts = {}) {
 	return {
 		name,
 		latitude,
 		longitude,
 		region,
 		skillLevel: "Intermediate",
-		faces: "W",
+		faces: opts.faces ?? "W",
 		breakType: "beach",
 		bestTide: "mid",
 		optimalSwellDir: [270, 315],
 		optimalWindDir: [90, 180],
-		swellWindow: Array.from({ length: 36 }, () => 0.5),
+		swellWindow: Array.from({ length: 36 }, () => opts.exposure ?? 0.5),
 		scoring: { max_score: 10, overall_score: 5 },
 		forecast: { generated_at: new Date().toISOString(), next_5_days: days },
 		tides: { today: [{ type: "high", time: `${days[0].date}T07:30` }] },
@@ -161,4 +166,29 @@ export function stubFetch(body = payload(), { geocode = null } = {}) {
 	};
 	impl.calls = calls;
 	return impl;
+}
+
+/**
+ * Two spots sharing one marine grid cell — identical waves, wind and air —
+ * that differ only in how exposed they are to the swell.
+ *
+ * This is the Newquay case from real data: Towan and Watergate Bay report the
+ * same 0.56m because the marine model has one cell for both, while their swell
+ * windows read 0.08 and 1.00. Any beach score that cannot separate these two
+ * is reading the grid cell, not the beach.
+ */
+export function sameCellPayload({ today = iso(new Date()), wave = 2.5 } = {}) {
+	const opts = { wave, wind: 14, temp: 22, rain: 0, surf: 60 };
+	return {
+		success: true,
+		count: 2,
+		generated_at: `${today}T06:00:00.000Z`,
+		status: "ok",
+		spots: [
+			spot("Sheltered Cove", 50.41, -5.08, "North Cornwall",
+				[day(today, opts)], { exposure: 0.08 }),
+			spot("Exposed Beach", 50.42, -5.09, "North Cornwall",
+				[day(today, opts)], { exposure: 1.0 }),
+		],
+	};
 }

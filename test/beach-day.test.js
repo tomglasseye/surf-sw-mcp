@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { scoreBeachHour, scoreBeachDay, ratingFor } from "../src/beach-day.js";
+import {
+	scoreBeachHour,
+	scoreBeachDay,
+	ratingFor,
+	exposureAt,
+	effectiveWaveHeight,
+	windShelter,
+} from "../src/beach-day.js";
 
 const hour = ({ wave = 0.5, wind = 8, temp = 22, rain = 0 }) => ({
 	marine: { waveHeight: wave },
@@ -120,4 +127,171 @@ test("moderate wind is weighted, not gated", () => {
 	const breezy = scoreBeachHour(hour({ temp: 22, wind: 18, wave: 0.5 }));
 	assert.equal(breezy.components.gale_gate, 1);
 	assert.ok(breezy.score > 60);
+});
+
+// ── Shelter: the part good-for.js cannot do ──────────────────────────────
+
+test("exposureAt reads the 36-bucket window, and defaults open", () => {
+	const w = Array.from({ length: 36 }, (_, i) => i / 35);
+	assert.equal(exposureAt(w, 0), 0);
+	assert.equal(exposureAt(w, 350), 1);
+	assert.ok(Math.abs(exposureAt(w, 180) - 18 / 35) < 0.01);
+	assert.equal(exposureAt(w, 356), 0, "wraps back to bucket 0");
+
+	// Safe wiring: a spot with no window must score as it did before rather
+	// than being wrongly penalised. This is the rule that stopped the swell
+	// window breaking every spot when it was first added to the API.
+	assert.equal(exposureAt(undefined, 270), 1);
+	assert.equal(exposureAt([], 270), 1);
+	assert.equal(exposureAt(w, null), 1);
+});
+
+test("effective wave height uses the square root of exposure", () => {
+	// Height goes as the root of energy. Multiplying height by exposure
+	// directly would put Towan at 0.2m in a 2.5m swell, which is far too
+	// flattering; the root puts it at 0.7m.
+	assert.ok(Math.abs(effectiveWaveHeight(2.5, 0.08) - 0.707) < 0.01);
+	assert.equal(effectiveWaveHeight(2.5, 1), 2.5);
+	assert.ok(Math.abs(effectiveWaveHeight(2.5, 0.42) - 1.62) < 0.01);
+	assert.equal(effectiveWaveHeight(null, 0.5), null);
+});
+
+test("wind shelter reads offshore as sheltered", () => {
+	// A west-facing beach. Wind FROM the west has crossed the sea and hits you;
+	// wind FROM the east has crossed the land behind the beach first.
+	assert.equal(windShelter(270, "W"), 1, "straight onshore, no shelter");
+	assert.ok(Math.abs(windShelter(90, "W") - 0.6) < 0.001, "straight offshore");
+	assert.ok(Math.abs(windShelter(180, "W") - 0.8) < 0.001, "cross-shore, half");
+
+	// Unknown or missing data must not invent shelter.
+	assert.equal(windShelter(90, undefined), 1);
+	assert.equal(windShelter(null, "W"), 1);
+	assert.equal(windShelter(90, "banana"), 1);
+});
+
+test("THE FIX: two beaches in one grid cell score differently", () => {
+	// Same wave height, wind and air — the only difference is the swell
+	// window. Measured on real data, six Newquay spots reported an identical
+	// 0.56m across a twelve-fold difference in exposure, and good-for.js gave
+	// them all the same swim and splash score because it reads the grid cell.
+	const conditions = {
+		marine: { waveHeight: 2.5, swellDirection: 285 },
+		weather: { windSpeed: 14, windDirection: 135, temperature: 22, precipitation: 0 },
+	};
+	const sheltered = scoreBeachHour(conditions, {
+		swellWindow: Array(36).fill(0.08), faces: "W",
+	});
+	const exposed = scoreBeachHour(conditions, {
+		swellWindow: Array(36).fill(1), faces: "W",
+	});
+
+	assert.ok(
+		sheltered.score > exposed.score + 10,
+		`sheltered ${sheltered.score} should clearly beat exposed ${exposed.score}`,
+	);
+	assert.ok(sheltered.inputs.effective_wave_height_m < 0.8, "knee-high in the cove");
+	assert.equal(exposed.inputs.effective_wave_height_m, 2.5, "full size outside");
+	// Both still report the grid-cell figure, so an answer can explain itself.
+	assert.equal(sheltered.inputs.wave_height_m, 2.5);
+});
+
+test("with no spot the score still works, just bluntly", () => {
+	// Safe wiring again: omitting the spot must not throw or zero the score,
+	// it should simply fall back to the grid cell.
+	const r = scoreBeachHour({
+		marine: { waveHeight: 0.4, swellDirection: 285 },
+		weather: { windSpeed: 8, windDirection: 135, temperature: 22, precipitation: 0 },
+	});
+	assert.ok(r && r.score > 70);
+	assert.equal(r.components.swell_exposure, 1);
+	assert.equal(r.components.wind_shelter, 1);
+});
+
+test("day-level scoring applies shelter from the dominant directions", () => {
+	const day = {
+		summary: {
+			windSpeed: { avg: 14 },
+			temperature: { max: 22 },
+			waveHeight: { avg: 2.5 },
+		},
+		daily: {
+			marine: { waveDirectionDominant: 285 },
+			weather: { precipitationSum: 0, windDirectionDominant: 135 },
+		},
+	};
+	const sheltered = scoreBeachDay(day, { swellWindow: Array(36).fill(0.08), faces: "W" });
+	const exposed = scoreBeachDay(day, { swellWindow: Array(36).fill(1), faces: "W" });
+	assert.ok(
+		sheltered.score > exposed.score + 10,
+		`day-level must shelter too: ${sheltered.score} vs ${exposed.score}`,
+	);
+});
+
+// ── Audience ─────────────────────────────────────────────────────────────
+
+test("THE FAMILY CASE: a 2.5m beach is fine to sit on and no place for kids", () => {
+	// One weighting collapses these. Wind and temperature carry 80% of the
+	// sitting score, so a warm, light-wind, 2.5m day at an exposed beach came
+	// out at 79/100 — "great" — which is correct for a deckchair and dangerous
+	// advice for a family with small children.
+	const conditions = {
+		marine: { waveHeight: 2.5, swellDirection: 285 },
+		weather: { windSpeed: 12, windDirection: 135, temperature: 23, precipitation: 0 },
+	};
+	const exposed = { swellWindow: Array(36).fill(1), faces: "W" };
+
+	const sitting = scoreBeachHour(conditions, exposed, "sitting");
+	const swimming = scoreBeachHour(conditions, exposed, "swimming");
+	const kids = scoreBeachHour(conditions, exposed, "kids");
+
+	assert.ok(sitting.score > 70, `fine to sit on, got ${sitting.score}`);
+	assert.ok(swimming.score < 50, `not for swimming, got ${swimming.score}`);
+	assert.ok(kids.score < 20, `no place for kids, got ${kids.score}`);
+	assert.equal(kids.rating, "no");
+});
+
+test("the same day at a sheltered beach works for everyone", () => {
+	// And this is the pay-off: same grid cell, same weather, but the swell
+	// window says the water here is knee-high. Without the shelter maths this
+	// beach would score identically to the exposed one and a family would have
+	// nowhere to go on a big day.
+	const conditions = {
+		marine: { waveHeight: 2.5, swellDirection: 285 },
+		weather: { windSpeed: 12, windDirection: 135, temperature: 23, precipitation: 0 },
+	};
+	const sheltered = { swellWindow: Array(36).fill(0.08), faces: "W" };
+
+	for (const audience of ["sitting", "swimming", "kids"]) {
+		const r = scoreBeachHour(conditions, sheltered, audience);
+		assert.ok(r.score > 70, `${audience} should be fine here, got ${r.score}`);
+	}
+});
+
+test("wave size still matters to kids on a calm warm day", () => {
+	// The gate must not be all-or-nothing: 0.9m is worse than 0.3m for a
+	// toddler even though neither is dangerous.
+	const at = (wave) =>
+		scoreBeachHour(
+			{
+				marine: { waveHeight: wave, swellDirection: 285 },
+				weather: { windSpeed: 8, windDirection: 135, temperature: 23, precipitation: 0 },
+			},
+			{ swellWindow: Array(36).fill(1), faces: "W" },
+			"kids",
+		).score;
+	assert.ok(at(0.3) > at(0.9), "smaller is better for kids");
+	assert.ok(at(0.9) > at(1.6), "and 1.6m worse again");
+});
+
+test("an unknown audience falls back to sitting rather than throwing", () => {
+	const r = scoreBeachHour(
+		{
+			marine: { waveHeight: 1, swellDirection: 285 },
+			weather: { windSpeed: 10, windDirection: 135, temperature: 22, precipitation: 0 },
+		},
+		{ swellWindow: Array(36).fill(1), faces: "W" },
+		"sunbathing-with-a-dog",
+	);
+	assert.ok(r);
+	assert.equal(r.audience, "sitting");
 });
