@@ -236,12 +236,31 @@ const failure = (s) => ({ content: [{ type: "text", text: s }], isError: true })
 
 // ── Tool registration ─────────────────────────────────────────────────────
 
+/**
+ * Every tool here reads and ranks. None of them writes anything, and all of
+ * them reach a forecast API outside this process.
+ *
+ * Saying so explicitly is what lets a client stop asking permission before
+ * each call — without these hints it has to assume the worst, and a question
+ * about where to surf turns into four approval prompts.
+ *
+ * destructiveHint and openWorldHint are only strictly meaningful once
+ * readOnlyHint is false, but stating them costs nothing and answers the
+ * question a reader of this file would otherwise have to infer.
+ */
+const READ_ONLY = {
+	readOnlyHint: true,
+	destructiveHint: false,
+	openWorldHint: true,
+};
+
 export function registerTools(server, { fetchImpl } = {}) {
 	// ── 1. Surf ────────────────────────────────────────────────────────────
 	server.registerTool(
 		"find_surf_spots",
 		{
 			title: "Find the best surf nearby",
+			annotations: READ_ONLY,
 			description:
 				"Rank surf spots near a place by how good the surf will be, for a " +
 				"given day and part of day. Use this for anything like \"where " +
@@ -346,6 +365,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 		"find_beach_spots",
 		{
 			title: "Find a good beach to spend time on",
+			annotations: READ_ONLY,
 			description:
 				"Rank beaches near a place by how good they will actually be to " +
 				"spend time on, rather than to surf. Use this for \"where's a " +
@@ -433,6 +453,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 		"get_spot_forecast",
 		{
 			title: "Full forecast for one spot",
+			annotations: READ_ONLY,
 			description:
 				"Hour-by-hour forecast and score for a single named surf spot — " +
 				"waves, swell, wind, tide, air temperature and both the surf and " +
@@ -575,6 +596,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 		"list_spots",
 		{
 			title: "List the spots in the dataset",
+			annotations: READ_ONLY,
 			description:
 				"List known surf spots, optionally filtered by region or name. " +
 				"Use to check coverage before telling someone a place is not " +

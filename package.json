@@ -2,6 +2,7 @@
   "name": "surf-mcp",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "MCP connector for the surf forecast API — lets Claude answer \"where's the best spot near me\" and \"where's a good beach today\"",
   "type": "module",
   "scripts": {

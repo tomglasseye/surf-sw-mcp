@@ -195,3 +195,7 @@ matters, put a shared secret in front of it.
 - **Payloads are cached for 10 minutes** in the function instance. The API
   refreshes every 2 hours, so that is always fresh; it stops a conversation
   re-downloading megabytes per question.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
