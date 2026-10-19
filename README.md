@@ -1,5 +1,7 @@
 # surf-mcp — a Claude connector for the surf API
 
+[![M8ven Verified](https://m8ven.ai/badge/mcp/tomglasseye-surf-sw-mcp-1vmy7b?variant=verified&v=f4b73e4159b56d1196c1b3c201c626cc)](https://m8ven.ai/mcp/tomglasseye-surf-sw-mcp-1vmy7b?s=readme)
+
 Lets Claude answer questions like:
 
 > where's the best surf near Newquay tomorrow morning?
