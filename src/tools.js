@@ -244,13 +244,14 @@ const failure = (s) => ({ content: [{ type: "text", text: s }], isError: true })
  * each call — without these hints it has to assume the worst, and a question
  * about where to surf turns into four approval prompts.
  *
- * destructiveHint and openWorldHint are only strictly meaningful once
- * readOnlyHint is false, but stating them costs nothing and answers the
- * question a reader of this file would otherwise have to infer.
+ * destructiveHint, idempotentHint and openWorldHint are only strictly
+ * meaningful once readOnlyHint is false, but stating them costs nothing and
+ * answers the question a reader of this file would otherwise have to infer.
  */
 const READ_ONLY = {
 	readOnlyHint: true,
 	destructiveHint: false,
+	idempotentHint: true,
 	openWorldHint: true,
 };
 
