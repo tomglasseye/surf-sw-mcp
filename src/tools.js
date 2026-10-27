@@ -331,6 +331,9 @@ function scoreBreakdown(day) {
 	];
 }
 
+/** "a beginner", "an intermediate", "an advanced". */
+const withArticle = (word) => `${/^[aeiou]/i.test(word) ? "an" : "a"} ${word}`;
+
 const text = (s) => ({ content: [{ type: "text", text: s }] });
 const failure = (s) => ({ content: [{ type: "text", text: s }], isError: true });
 
@@ -451,7 +454,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					`Best surf near ${location.name} — ${window.label} ` +
 					`(${window.date}, ${String(window.fromHour).padStart(2, "0")}:00-` +
 					`${String(window.toHour).padStart(2, "0")}:00)\n` +
-					`Surf score 0-100 for ${skill === "intermediate" ? "an" : "a"} ${skill} surfer. ` +
+					`Surf score 0-100 for ${withArticle(skill)} surfer. ` +
 					`${rows.length} spot(s) within ${radiusKm}km; best daylight hour shown.\n` +
 					"Heights are wave faces at each break, not the open-sea " +
 					"forecast; wind is judged against the way each beach faces.\n" +
@@ -666,7 +669,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					const lit = daylightOf(day);
 					const hours = day.hourly.filter((h) => inWindow(h, window));
 					lines.push(
-						`Hourly, surf score for ${skill === "intermediate" ? "an" : "a"} ${skill} surfer:`,
+						`Hourly, surf score for ${withArticle(skill)} surfer:`,
 						"time".padEnd(6) + "surf".padStart(4) + "beach".padStart(6) + "  face".padEnd(12) +
 							"open sea".padEnd(15) + "wind".padEnd(30) + "verdict".padEnd(16) +
 							"air".padStart(4) + "rain".padStart(7) + "sky".padStart(7),
@@ -708,7 +711,7 @@ export function registerTools(server, { fetchImpl } = {}) {
 					const beach = scoreBeachDay(day, match);
 					lines.push(
 						"Day-level only (hourly detail was not available for this day):",
-						`  surf score       ${day.surf_score?.scoresBySkill?.[skill] ?? day.surf_score?.totalScore ?? "-"}/100 for ${skill === "intermediate" ? "an" : "a"} ${skill} surfer`,
+						`  surf score       ${day.surf_score?.scoresBySkill?.[skill] ?? day.surf_score?.totalScore ?? "-"}/100 for ${withArticle(skill)} surfer`,
 						`  beach-day score  ${beach?.score ?? "-"}/100 (${beach ? explainBeach(beach) : "no data"})`,
 						`  faces            ${day.face_range ? `${sizeText(day.face_range.min)} to ${sizeText(day.face_range.max)}` : "-"}`,
 						`  open sea         ${s.waveHeight?.min ?? "-"}-${s.waveHeight?.max ?? "-"}m`,

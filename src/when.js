@@ -53,6 +53,19 @@ export function hourIn(timeZone = "Europe/London", now = new Date()) {
 	);
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * "2026-10-31" → "Sat 31 Oct". Built by hand rather than with Intl so the
+ * words don't change with the runtime's locale data ("Sep" vs "Sept").
+ */
+export function prettyDate(isoDate) {
+	const d = new Date(`${isoDate}T12:00:00Z`);
+	if (Number.isNaN(d.getTime())) return isoDate;
+	return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
 function addDays(isoDate, days) {
 	const d = new Date(`${isoDate}T12:00:00Z`); // midday avoids DST edges
 	d.setUTCDate(d.getUTCDate() + days);
@@ -113,7 +126,7 @@ export function resolveWindow(
 			? "today"
 			: resolved === addDays(today, 1)
 				? "tomorrow"
-				: resolved;
+				: prettyDate(resolved);
 
 	return {
 		date: resolved,

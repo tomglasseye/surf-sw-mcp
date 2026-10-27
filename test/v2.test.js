@@ -115,3 +115,11 @@ test("the connector's words match the app's and the API's on the edge cases", ()
 	assert.match(describeHour(small, { shoreNormal: 285 }, "beginner").headline, /^Small — 2–3ft/);
 	assert.equal(describeHour(small, { shoreNormal: 285 }, "beginner").label, "Small");
 });
+
+test("headers read naturally: 'an advanced surfer', and dates as days", async () => {
+	const client = await connect(v2Payload({ today: TODAY, tomorrow: TOMORROW }));
+	const adv = await call(client, "find_surf_spots", { latitude: 50.35, longitude: -5.155, skill_level: "advanced" });
+	assert.match(adv.text, /for an advanced surfer/);
+	const beg = await call(client, "get_spot_forecast", { spot: "Perranporth", skill_level: "beginner" });
+	assert.match(beg.text, /surf score for a beginner surfer/);
+});
