@@ -60,6 +60,7 @@ test("labels read naturally so the answer can quote them", () => {
 		resolveWindow({ date: "2026-09-05", part_of_day: "afternoon" }, { now: NOW }).label,
 		"2026-09-05 afternoon",
 	);
+	assert.equal(resolveWindow({ part_of_day: "evening" }, { now: NOW }).label, "this evening");
 });
 
 test("bad input is refused with something a person can act on", () => {

@@ -119,7 +119,12 @@ export function resolveWindow(
 		date: resolved,
 		fromHour: range[0],
 		toHour: range[1],
-		label: part === "all_day" ? dayLabel : `${dayLabel} ${part}`,
+		label:
+			part === "all_day"
+				? dayLabel
+				: dayLabel === "today"
+					? `this ${part}`
+					: `${dayLabel} ${part}`,
 	};
 }
 
@@ -132,4 +137,60 @@ export function inWindow(hour, window) {
 		h >= window.fromHour &&
 		h < window.toHour
 	);
+}
+
+/**
+ * The day's daylight hours — first light to sunset, UK clock hours — or null
+ * when the payload predates them (scoring model v1), in which case nothing is
+ * filtered. Ranking "the best hour" across 06:00-21:00 in late October used
+ * to happily pick 19:00, two hours after dark.
+ */
+export function daylightOf(day) {
+	return Array.isArray(day?.daylight_hours) && day.daylight_hours.length
+		? new Set(day.daylight_hours)
+		: null;
+}
+
+/** Is this forecast hour in daylight? True when the day has no daylight data. */
+export function isLit(hour, lit) {
+	if (!lit) return true;
+	const h = hourOf(hour?.time);
+	return h != null && lit.has(h);
+}
+
+/**
+ * How much of a window is dark on a given day, in words, or null when all of
+ * it is light (or the day has no daylight data).
+ *
+ * @returns {{allDark: boolean, note: string}|null}
+ */
+export function darkness(day, window) {
+	const lit = daylightOf(day);
+	if (!lit) return null;
+	const inWin = [];
+	for (let h = window.fromHour; h < window.toHour; h++) inWin.push(h);
+	const dark = inWin.filter((h) => !lit.has(h));
+	if (!dark.length) return null;
+	const sun = day?.sun;
+	const pad = (h) => `${String(h).padStart(2, "0")}:00`;
+	const light =
+		sun?.sunrise && sun?.sunset
+			? `sunrise ${sun.sunrise}, sunset ${sun.sunset}`
+			: `daylight ${pad(Math.min(...lit))}–${pad(Math.max(...lit) + 1)}`;
+	if (dark.length === inWin.length) {
+		return { allDark: true, note: `All of ${window.label} is in the dark on ${day.date} — ${light}.` };
+	}
+	return { allDark: false, note: `Hours in the dark are left out (${light}).` };
+}
+
+/** "Day 3 ahead" style lead, from a forecast day's confidence. */
+export function confidenceNote(day) {
+	switch (day?.confidence) {
+		case "medium":
+			return "Three or four days out — medium confidence; worth checking again nearer the time.";
+		case "low":
+			return "Five or more days out — low confidence; the forecast models often disagree this far ahead.";
+		default:
+			return null;
+	}
 }

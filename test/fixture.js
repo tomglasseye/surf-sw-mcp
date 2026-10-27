@@ -222,3 +222,146 @@ export function travelPayload({ today = iso(new Date()) } = {}) {
 		],
 	};
 }
+
+// ── Scoring model v2 ─────────────────────────────────────────────────────
+
+/**
+ * One v2 forecast hour: the trimmed surf_score the API serves since model v2
+ * (face height at the break, wind relative to the beach, and what limited
+ * each skill, in skill order beginner/intermediate/advanced).
+ */
+export function hourV2(date, h, {
+	scores = [60, 60, 60],
+	limit = [null, null, null],
+	face = 1.2,
+	wind = "offshore",
+	windSpeed = 10,
+	windDirection = 105,
+	gust = 16,
+	swell = 1.1,
+	period = 12,
+} = {}) {
+	return {
+		time: `${date}T${String(h).padStart(2, "0")}:00`,
+		marine: {
+			waveHeight: swell * 1.1,
+			waveDirection: 285,
+			wavePeriod: period * 0.7,
+			swellHeight: swell,
+			swellDirection: 285,
+			swellPeriod: period * 0.85,
+			swellPeakPeriod: period,
+		},
+		weather: {
+			temperature: 14,
+			humidity: 80,
+			precipitation: 0,
+			pressure: 1012,
+			windSpeed,
+			windDirection,
+			windGusts: gust,
+		},
+		surf_score: {
+			totalScore: Math.max(...scores),
+			scoresBySkill: { beginner: scores[0], intermediate: scores[1], advanced: scores[2] },
+			breakdown: { waveHeightCategory: "good" },
+			face,
+			wind,
+			limit,
+		},
+	};
+}
+
+/**
+ * A late-October day at a west-facing beach: light 07:00-17:00, a clean
+ * morning, an onshore gale by mid-afternoon — and a "perfect" 99 at 19:00,
+ * two hours after dark, which no answer may ever recommend.
+ */
+export function dayV2(date, { confidence = "high", byHour = {} } = {}) {
+	const hourly = Array.from({ length: 24 }, (_, h) => hourV2(date, h, byHour[h] ?? { scores: [10, 10, 10], limit: ["flat", "flat", "flat"], face: 0.2 }));
+	return {
+		date,
+		hourly,
+		summary: {
+			waveHeight: { min: 1, max: 2.4, avg: 1.6 },
+			windSpeed: { min: 8, max: 34, avg: 18 },
+			temperature: { min: 11, max: 14, avg: 13 },
+		},
+		daily: {
+			marine: { waveHeightMax: 2.4, waveDirectionDominant: 285 },
+			weather: { temperatureMax: 14, temperatureMin: 11, precipitationSum: 0, windSpeedMax: 34, windDirectionDominant: 240 },
+		},
+		surf_score: {
+			totalScore: 82,
+			scoresBySkill: { beginner: 18, intermediate: 74, advanced: 82 },
+			limit: { beginner: "big", intermediate: null, advanced: null },
+			face: 1.6,
+			peakPeriod: 12,
+			wind: { type: "offshore", quality: 96, felt: 10, gust: 16, theta: 5, shelter: 1 },
+			breakdown: {
+				modelVersion: 2,
+				faceHeight: 1.6,
+				swellHeight: 1.3,
+				effectiveExposure: 0.97,
+				spotWorks: 1,
+				workingRange: [0.6, 2.6],
+				workingRangeSource: "default",
+				windType: "offshore",
+				windFactor: 0.98,
+				peakPeriod: 12,
+				periodFactor: 0.94,
+				directionFactor: 1,
+				tideFactor: 0.9,
+				tideState: "mid",
+				limit: { beginner: "big", intermediate: null, advanced: null },
+			},
+		},
+		best_hour: "09:00",
+		best_hour_by_skill: { beginner: "07:00", intermediate: "09:00", advanced: "09:00" },
+		sun: { sunrise: "07:01", sunset: "17:07" },
+		daylight_hours: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+		face_range: { min: 0.9, max: 2.4 },
+		confidence,
+		advice: {
+			beginner: "Not great — best around 7am. Above your level — 3–5ft faces.",
+			intermediate: "Best around 9am. 4–5ft, light offshore.",
+			advanced: "Best around 9am. 4–5ft, light offshore.",
+		},
+	};
+}
+
+/** Perranporth-ish: faces 285°, so a 247° wind is cross-onshore. */
+export function v2Payload({ today, tomorrow, confidence = "high" }) {
+	const byHour = {
+		7: { scores: [20, 55, 60], limit: ["big", null, null], face: 1.5 },
+		9: { scores: [18, 74, 82], limit: ["big", null, null], face: 1.6 },
+		15: { scores: [5, 22, 25], limit: ["big", "wind", "wind"], face: 1.9, wind: "cross-on", windSpeed: 30, windDirection: 247.5, gust: 49 },
+		19: { scores: [99, 99, 99], limit: [null, null, null], face: 1.6 },
+	};
+	const mk = (date, conf) => dayV2(date, { confidence: conf, byHour });
+	return {
+		success: true,
+		count: 1,
+		generated_at: `${today}T06:00:00.000Z`,
+		status: "ok",
+		spots: [
+			{
+				name: "Perranporth",
+				latitude: 50.35,
+				longitude: -5.155,
+				region: "North Cornwall",
+				skillLevel: "Beginner",
+				faces: "W",
+				shoreNormal: 285,
+				breakType: "beach",
+				bestTide: "low_to_mid",
+				optimalSwellDir: [270, 315],
+				optimalWindDir: [60, 150],
+				swellWindow: Array.from({ length: 36 }, () => 1),
+				scoring: { max_score: 10, overall_score: 7, model_version: 2 },
+				forecast: { next_5_days: [mk(today, "high"), mk(tomorrow, confidence)] },
+				tides: { today: [{ type: "LowWater", time: `${today}T09:30` }] },
+			},
+		],
+	};
+}

@@ -8,10 +8,11 @@
  *
  * TWO ENDPOINTS, DIFFERENT COSTS
  * ------------------------------
- *   /surf/summary  ~3MB   hourly for TODAY only; days 1-6 carry day-level
+ *   /surf/summary  ~4MB   hourly for TODAY only; days 1-6 carry day-level
  *                         scores, a morning/afternoon snapshot and daily
  *                         min/max/avg, but `hourly: []`.
- *   /surf          ~5MB   hourly for all seven days.
+ *   /surf          ~15MB  hourly for all seven days.
+ *   (Sizes as JSON; the API gzips them on the wire.)
  *
  * Summary answers most questions, so it is the default and the full payload is
  * only fetched when hourly detail is genuinely needed for a future day. Both

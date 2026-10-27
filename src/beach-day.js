@@ -198,16 +198,40 @@ export function effectiveWaveHeight(waveHeight, exposure) {
  * The 0.6 floor is an approximation — a cliff-backed cove in an offshore is
  * nearly still, an open dune system much less so, and the payload does not say
  * which is which.
+ *
+ * Takes the spot (or, as before, just its `faces` word). With a spot it uses
+ * the measured `shoreNormal` — the bearing the beach actually looks out to sea
+ * — rather than the 16-point word, and any headland shelter the spot records
+ * (`windShelter`, e.g. Fistral from the south-west): the same two facts the
+ * surf score now judges wind by.
  */
-export function windShelter(windDirection, faces) {
-	const bearing = FACE_BEARINGS[String(faces || "").toUpperCase()];
+export function windShelter(windDirection, spotOrFaces) {
+	const spot = spotOrFaces && typeof spotOrFaces === "object" ? spotOrFaces : null;
+	const bearing = spot && Number.isFinite(spot.shoreNormal)
+		? spot.shoreNormal
+		: FACE_BEARINGS[String((spot ? spot.faces : spotOrFaces) || "").toUpperCase()];
 	if (bearing === undefined || windDirection == null || !Number.isFinite(windDirection)) {
 		return 1;
 	}
 	const theta = (((windDirection - bearing) % 360) + 360) % 360;
 	// 0 = straight onshore, 180 = straight offshore.
 	const offshoreness = (1 - Math.cos((theta * Math.PI) / 180)) / 2;
-	return 1 - 0.4 * offshoreness;
+	return (1 - 0.4 * offshoreness) * headlandShelter(spot, windDirection);
+}
+
+/** Share of the wind a headland lets through from this direction (0-1). */
+function headlandShelter(spot, dir) {
+	if (!Array.isArray(spot?.windShelter)) return 1;
+	const n = (d) => ((d % 360) + 360) % 360;
+	let f = 1;
+	for (const s of spot.windShelter) {
+		const a = n(s.from);
+		const b = n(s.to);
+		const d = n(dir);
+		const inside = a <= b ? d >= a && d <= b : d >= a || d <= b;
+		if (inside && Number.isFinite(s.factor)) f = Math.min(f, Math.max(0, Math.min(1, s.factor)));
+	}
+	return f;
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────
@@ -285,7 +309,7 @@ export function scoreBeachHour(hour, spot, audience = "sitting") {
 	const precipitation = hour?.weather?.precipitation ?? 0;
 
 	const exposure = exposureAt(spot?.swellWindow, hour?.marine?.swellDirection);
-	const shelter = windShelter(hour?.weather?.windDirection, spot?.faces);
+	const shelter = windShelter(hour?.weather?.windDirection, spot ?? undefined);
 
 	const result = score({
 		windSpeed: windSpeedRaw == null ? null : windSpeedRaw * shelter,
@@ -337,7 +361,7 @@ export function scoreBeachDay(day, spot, audience = "sitting") {
 	);
 	const shelter = windShelter(
 		day?.daily?.weather?.windDirectionDominant,
-		spot?.faces,
+		spot ?? undefined,
 	);
 
 	const result = score({
@@ -405,7 +429,7 @@ export function explainBeach(result) {
 				`${Number(i.effective_wave_height_m).toFixed(1)}m here)`,
 		);
 	}
-	if (c.wind_shelter < 0.8) shelters.push("wind blowing off the land");
+	if (c.wind_shelter < 0.8) shelters.push("sheltered from the wind");
 
 	if (!bits.length && !shelters.length) {
 		const sunny =

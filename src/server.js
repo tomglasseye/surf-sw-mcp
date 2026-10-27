@@ -25,7 +25,10 @@ export function buildServer({ fetchImpl } = {}) {
 				"spend time on (these often disagree, which is the point), and " +
 				"get_spot_forecast when they name a break. Scores are 0-100. " +
 				"Always say which day and part of day an answer refers to, " +
-				"because conditions change hour to hour.",
+				"because conditions change hour to hour, and pass on what " +
+				"limits a score (blown out, too big for their level, wrong " +
+				"tide) — that is usually the advice, more than the number. " +
+				"Wave heights are faces at the break; only daylight hours count.",
 		},
 	);
 

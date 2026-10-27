@@ -14,7 +14,7 @@ way in the app and another way here.
 
 ## Why a connector rather than pasting the API URL into a chat
 
-Because the arithmetic has to happen in code. Asking a model to read a 3–5MB
+Because the arithmetic has to happen in code. Asking a model to read a 4–15MB
 JSON payload and rank 126 spots is exactly the operation that produced the
 fabricated region counts retracted in `docs/FORECAST_ACCURACY_AUDIT.md` — the
 same question asked twice gave two different answers, one summing to 146 spots
@@ -25,9 +25,9 @@ with tests.
 
 | Tool | Answers |
 |---|---|
-| `find_surf_spots` | "where should I surf near me" — ranked by surf score |
+| `find_surf_spots` | "where should I surf near me" — ranked by surf score, each row saying what limits it |
 | `find_beach_spots` | "where's a nice beach today" — ranked by beach-day score |
-| `get_spot_forecast` | hour-by-hour detail and score breakdown for one break |
+| `get_spot_forecast` | hour-by-hour detail, a verdict per skill level, and the score breakdown for one break |
 | `list_spots` | what's in the dataset, by region |
 
 All of them take a location (`near` as a place name, or `latitude`/`longitude`)
@@ -181,6 +181,25 @@ click Add. No OAuth needed — it reads the same public API the app serves.
 Worth knowing: that makes the endpoint public. The data behind it is already
 public, but the connector will pass traffic to your API, so if that ever
 matters, put a shared secret in front of it.
+
+## What the surf rows say (scoring model v2)
+
+Since the 26 Oct 2026 scoring review the API serves, for every forecast hour,
+the wave **face height at the break** (not the open-sea figure every spot in a
+model cell shares), the **wind relative to the beach** (offshore, cross-shore,
+cross-onshore… measured from the way the beach faces) and what **limited**
+the score for each skill level. Rows are built from those, in the app's
+words — `src/conditions.js` mirrors the app's `shared/conditions-text.js`:
+
+    1. Perranporth   20  3km N  at 07:00  Too big: Above your level — 4–5ft faces. · 12s WNW swell
+
+- **Daylight only.** Hours between sunset and first light are left out of the
+  ranking, and an answer says so. An October "evening" is all dark, and the
+  answer says that instead of recommending 19:00.
+- **Confidence.** Days three or more out carry a note; five or more say the
+  models often disagree.
+- **Older payloads still work.** Without the v2 fields the rows fall back to
+  the open-sea height and the connector filters nothing.
 
 ## Limits worth knowing
 
