@@ -193,9 +193,10 @@ words — `src/conditions.js` mirrors the app's `shared/conditions-text.js`:
 
     1. Perranporth   20  3km N  at 07:00  Too big: Above your level — 4–5ft faces. · 12s WNW swell
 
-- **Daylight only.** Hours between sunset and first light are left out of the
-  ranking, and an answer says so. An October "evening" is all dark, and the
-  answer says that instead of recommending 19:00.
+- **Daylight only.** Hours outside the daylight window, an hour before sunrise
+  to an hour after sunset, are left out of the ranking, and an answer says so.
+  A late-October "evening" is all dark, and the answer says that instead of
+  recommending 19:00.
 - **Confidence.** Days three or more out carry a note; five or more say the
   models often disagree.
 - **Older payloads still work.** Without the v2 fields the rows fall back to

@@ -638,7 +638,10 @@ export function registerTools(server, { fetchImpl } = {}) {
 				];
 
 				if (day.sun?.sunrise && day.sun?.sunset) {
-					lines.push(`Daylight: sunrise ${day.sun.sunrise}, sunset ${day.sun.sunset}`);
+					lines.push(
+						`Daylight: sunrise ${day.sun.sunrise}, sunset ${day.sun.sunset} ` +
+							"(hours from an hour before sunrise to an hour after sunset are scored)",
+					);
 				}
 				const conf = confidenceNote(day);
 				if (conf) lines.push(conf);

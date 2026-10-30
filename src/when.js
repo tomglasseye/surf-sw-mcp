@@ -153,7 +153,8 @@ export function inWindow(hour, window) {
 }
 
 /**
- * The day's daylight hours — first light to sunset, UK clock hours — or null
+ * The day's daylight hours — an hour before sunrise to an hour after sunset,
+ * UK clock hours — or null
  * when the payload predates them (scoring model v1), in which case nothing is
  * filtered. Ranking "the best hour" across 06:00-21:00 in late October used
  * to happily pick 19:00, two hours after dark.

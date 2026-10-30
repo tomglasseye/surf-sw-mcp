@@ -273,7 +273,8 @@ export function hourV2(date, h, {
 }
 
 /**
- * A late-October day at a west-facing beach: light 07:00-17:00, a clean
+ * A late-October day at a west-facing beach: light from 06:00 (an hour before
+ * sunrise) to 17:00 (the last hour that starts inside an hour after sunset), a clean
  * morning, an onshore gale by mid-afternoon — and a "perfect" 99 at 19:00,
  * two hours after dark, which no answer may ever recommend.
  */
@@ -319,7 +320,7 @@ export function dayV2(date, { confidence = "high", byHour = {} } = {}) {
 		best_hour: "09:00",
 		best_hour_by_skill: { beginner: "07:00", intermediate: "09:00", advanced: "09:00" },
 		sun: { sunrise: "07:01", sunset: "17:07" },
-		daylight_hours: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+		daylight_hours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
 		face_range: { min: 0.9, max: 2.4 },
 		confidence,
 		advice: {
