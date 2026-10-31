@@ -15,7 +15,7 @@ way in the app and another way here.
 ## Why a connector rather than pasting the API URL into a chat
 
 Because the arithmetic has to happen in code. Asking a model to read a 4–15MB
-JSON payload and rank 126 spots is exactly the operation that produced the
+JSON payload and rank 125 spots is exactly the operation that produced the
 fabricated region counts retracted in `docs/FORECAST_ACCURACY_AUDIT.md` — the
 same question asked twice gave two different answers, one summing to 146 spots
 instead of 126. Distance, filtering and ranking here are ordinary functions
